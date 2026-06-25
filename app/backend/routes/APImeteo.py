@@ -203,6 +203,8 @@ def meteo():
     except (ValueError, KeyError) as exc:
         return jsonify({"error": str(exc)}), 400
 
+    # ==== calcule distance et récupe des données =======
+
     fichiers_departement = fichiers_contenant_nombre(numerodepartement)
     if not fichiers_departement:
         return jsonify({"error": "Aucun fichier trouve pour ce departement."}), 404
@@ -215,7 +217,8 @@ def meteo():
 
     recherche_autres_datasets = False
 
-    if station_min["distance_km"] > DISTANCE_MAX_DEPARTEMENT:
+    # === Boucles sur les autres département 
+    if station_min["distance_km"] > DISTANCE_MAX_DEPARTEMENT: # 40 km
         autres_fichiers = [
             fichier
             for fichier in lister_fichiers_datasets()
@@ -237,6 +240,7 @@ def meteo():
         station_min["num_poste"],
     )
 
+    # retourne les données au front
     return jsonify(
         {
             "ville": ville,

@@ -154,20 +154,6 @@ def CoodonnesVille(ville):
         return None
 
 # ======= s'avoir le numéro du département de la ville =====  
-def get_departement(ville: str) -> str | None:
-    geolocator = Nominatim(user_agent="mon_application")
-
-    location = geolocator.geocode(
-        f"{ville}, France",
-        addressdetails=True
-    )
-
-    if location is None:
-        return None
-
-    adresse = location.raw.get("address", {})
-    return adresse.get("county")  # département
-
 
 def get_departement(ville: str) -> str | None:
     geolocator = Nominatim(user_agent="mon_application")
