@@ -81,6 +81,7 @@ yarn-error.log*
 *.swp
 temp/
 tmp/
+app/backend/exports/
 
 # Generated files
 *.png
