@@ -1,8 +1,10 @@
 import re
 import unicodedata
+from functools import lru_cache
 
-from geopy.geocoders import Nominatim
+from geopy.geocoders import ArcGIS, Nominatim
 from geopy.distance  import geodesic
+from geopy.exc import GeocoderRateLimited, GeocoderServiceError, GeocoderTimedOut, GeocoderUnavailable
 
 DEPARTEMENTS = {
     "01": "Ain",
@@ -109,14 +111,46 @@ DEPARTEMENTS = {
 }
 
 # ======== calcule coordonnées ville ======
+GEOCODER_TIMEOUT = 10
+
+
+def _build_geolocator(user_agent: str) -> Nominatim:
+    return Nominatim(user_agent=user_agent, timeout=GEOCODER_TIMEOUT)
+
+
+def _build_arcgis_geolocator() -> ArcGIS:
+    return ArcGIS(timeout=GEOCODER_TIMEOUT)
+
+
+@lru_cache(maxsize=256)
 def CoodonnesVille(ville):
-    geolocator = Nominatim(user_agent="mon_application_voyage")
+    geolocator = _build_geolocator("mon_application_voyage")
     try:
-        location = geolocator.geocode(ville)
+        location = geolocator.geocode(
+            f"{ville}, France",
+            country_codes="fr",
+            addressdetails=True,
+            exactly_one=True
+        )
+
+        if location is None:
+            location = geolocator.geocode(
+                ville,
+                addressdetails=True,
+                exactly_one=True
+            )
+
         if location:
             return (location.latitude, location.longitude)
         return None
-    except Exception:
+    except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError, GeocoderRateLimited):
+        try:
+            arcgis = _build_arcgis_geolocator()
+            location = arcgis.geocode(f"{ville}, France")
+            if location:
+                return (location.latitude, location.longitude)
+        except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError):
+            return None
         return None
 
 # ======= s'avoir le numéro du département de la ville =====  
@@ -159,8 +193,32 @@ def normalize_departement_name(nom: str) -> str:
     texte = texte.replace("’", "'")
     return re.sub(r"[\s'-]+", " ", texte).strip()
 
+@lru_cache(maxsize=256)
+def get_departement_robuste(ville: str) -> str | None:
+    geolocator = _build_geolocator("mon_application")
+
+    if ville.lower() == "paris":
+        return "Paris"
+
+    try:
+        location = geolocator.geocode(
+            f"{ville}, France",
+            country_codes="fr",
+            addressdetails=True,
+            exactly_one=True
+        )
+    except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError, GeocoderRateLimited):
+        return None
+
+    if location is None:
+        return None
+
+    adresse = location.raw.get("address", {})
+    return adresse.get("county")
+
+
 def testeVille(ville):
-    departement = get_departement(ville)
+    departement = get_departement_robuste(ville)
     print(departement)
 
     DEPARTEMENTS_INV = {
@@ -176,6 +234,7 @@ def testeVille(ville):
 
     print(code_departement)
     return code_departement
+
 
 def distance(coordA, coordB):
     distance = geodesic(coordA, coordB).km

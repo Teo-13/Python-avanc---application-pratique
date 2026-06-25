@@ -27,7 +27,6 @@ COLONNES_METEO = ["NUM_POSTE", "AAAAMMJJ", "TN", "TX", "TM"]
 DISTANCE_MAX_DEPARTEMENT = 40
 DATE_MIN = 20130101
 DATE_MAX = 20241231
-HISTORIQUE_RECENT_MAX = 30
 
 
 def lire_stations_fichier(nom_fichier: str) -> list[dict]:
@@ -146,20 +145,16 @@ def lire_mesures_station(nom_fichier: str, num_poste: str) -> dict:
             "premiere_date": None,
             "derniere_date": None,
             "mesure_plus_recente": None,
-            "historique_recent": [],
             "gelees_par_annee": {},
-            "mesures_par_date": {},
+            "historique_complet": [],
         }
 
     df["date"] = pd.to_datetime(df["AAAAMMJJ"].astype("Int64").astype(str), format="%Y%m%d", errors="coerce")
     df = df.dropna(subset=["date"]).sort_values("date")
 
-    for colonne in ["TN", "TX", "TM"]:
-        df[colonne] = df[colonne] / 10.0
-
-    historique_recent = []
-    for _, row in df.tail(HISTORIQUE_RECENT_MAX).iterrows():
-        historique_recent.append(formater_mesure(row))
+    historique_complet = []
+    for _, row in df.iterrows():
+        historique_complet.append(formater_mesure(row))
 
     derniere_ligne = df.iloc[-1]
     premiere_ligne = df.iloc[0]
@@ -172,24 +167,14 @@ def lire_mesures_station(nom_fichier: str, num_poste: str) -> dict:
             ((df["annee"] == annee) & (df["TN"].notna()) & (df["TN"] <= 0)).sum()
         )
 
-    mesures_par_date = {}
-    for _, row in df.iterrows():
-        mesure = formater_mesure(row)
-        mesures_par_date[mesure["date"]] = {
-            "TN": mesure["TN"],
-            "TX": mesure["TX"],
-            "TM": mesure["TM"],
-        }
-
     return {
         "num_poste": str(num_poste),
         "nombre_mesures": int(len(df)),
         "premiere_date": premiere_ligne["date"].strftime("%Y-%m-%d"),
         "derniere_date": derniere_ligne["date"].strftime("%Y-%m-%d"),
         "mesure_plus_recente": mesure_plus_recente,
-        "historique_recent": historique_recent,
         "gelees_par_annee": gelees_par_annee,
-        "mesures_par_date": mesures_par_date,
+        "historique_complet": historique_complet,
     }
 
 
@@ -209,7 +194,9 @@ def meteo():
 
     coord_ville = CoodonnesVille(ville)
     if not coord_ville:
-        return jsonify({"error": "Erreur calcul coordonnees ville."}), 400
+        return jsonify({
+            "error": "Impossible de recuperer les coordonnees de cette ville pour le moment. Reessaie dans quelques secondes."
+        }), 400
 
     try:
         numerodepartement = testeVille(ville)
@@ -259,6 +246,5 @@ def meteo():
             "mesures_station": mesures_station,
             "recherche_autres_datasets": recherche_autres_datasets,
             "distance_limite_km": DISTANCE_MAX_DEPARTEMENT,
-            "tableau_distances": tableau_distances,
         }
     )

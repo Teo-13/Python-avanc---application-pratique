@@ -1,26 +1,65 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import "./App.css";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:5001";
 
+const formatTemperature = (value) => {
+  if (value === null || value === undefined) {
+    return "Non disponible";
+  }
+
+  return `${new Intl.NumberFormat("fr-FR", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)} °C`;
+};
+
+const MONTHS = [
+  { value: "01", label: "Janvier" },
+  { value: "02", label: "Fevrier" },
+  { value: "03", label: "Mars" },
+  { value: "04", label: "Avril" },
+  { value: "05", label: "Mai" },
+  { value: "06", label: "Juin" },
+  { value: "07", label: "Juillet" },
+  { value: "08", label: "Aout" },
+  { value: "09", label: "Septembre" },
+  { value: "10", label: "Octobre" },
+  { value: "11", label: "Novembre" },
+  { value: "12", label: "Decembre" },
+];
+
+const DAYS = Array.from({ length: 31 }, (_, index) => {
+  const day = String(index + 1).padStart(2, "0");
+  return { value: day, label: String(index + 1) };
+});
+
+function creerCleJourMois(jour, mois) {
+  if (!jour || !mois) {
+    return "";
+  }
+
+  return `${mois}-${jour}`;
+}
+
 function App() {
   const [ville, setVille] = useState("");
-  const [dateSelectionnee, setDateSelectionnee] = useState("");
+  const [jourSelectionne, setJourSelectionne] = useState("");
+  const [moisSelectionne, setMoisSelectionne] = useState("");
+  const [jourMoisEnvoye, setJourMoisEnvoye] = useState("");
   const [chargement, setChargement] = useState("idle");
   const [erreur, setErreur] = useState("");
+  const [erreurDate, setErreurDate] = useState("");
   const [resultat, setResultat] = useState(null);
 
-  useEffect(() => {
-    const dateRecente = resultat?.mesures_station?.mesure_plus_recente?.date ?? "";
-    setDateSelectionnee(dateRecente);
-  }, [resultat]);
-
-  const formulaire = async (e) => {
+  const formulaireVille = async (e) => {
     e.preventDefault();
     setChargement("loading");
     setErreur("");
+    setErreurDate("");
+    setJourMoisEnvoye("");
 
     try {
       const res = await fetch(`${API_BASE_URL}/api/meteo/`, {
@@ -55,16 +94,45 @@ function App() {
     }
   };
 
-  const mesureChoisie =
-    resultat?.mesures_station?.mesures_par_date?.[dateSelectionnee] ?? null;
+  const formulaireDate = (e) => {
+    e.preventDefault();
+    setErreurDate("");
+
+    if (!jourSelectionne || !moisSelectionne) {
+      setErreurDate("Choisis un jour et un mois avant d'envoyer.");
+      return;
+    }
+
+    setJourMoisEnvoye(creerCleJourMois(jourSelectionne, moisSelectionne));
+  };
 
   const geleesParAnnee = Object.entries(
     resultat?.mesures_station?.gelees_par_annee ?? {},
   );
 
-  const stationsProches = [...(resultat?.tableau_distances ?? [])]
-    .sort((a, b) => a.distance_km - b.distance_km)
-    .slice(0, 6);
+  const rechercheJour = (() => {
+    if (!resultat || !jourMoisEnvoye) {
+      return {
+        cleJour: "",
+        mesures: [],
+        nombreGelees: 0,
+      };
+    }
+
+    const cleJour = jourMoisEnvoye;
+    const mesures = (resultat.mesures_station.historique_complet ?? []).filter(
+      (mesure) => mesure.date.slice(5) === cleJour,
+    );
+    const nombreGelees = mesures.filter(
+      (mesure) => mesure.TN !== null && mesure.TN <= 0,
+    ).length;
+
+    return {
+      cleJour,
+      mesures,
+      nombreGelees,
+    };
+  })();
 
   return (
     <main className="page">
@@ -73,13 +141,13 @@ function App() {
           <p className="eyebrow">Projet Meteo France</p>
           <h1>Retrouver la station meteo la plus proche d&apos;une ville</h1>
           <p className="hero-text">
-            Entre une ville, on interroge le backend Flask, on cherche la
-            meilleure station et on affiche les mesures utiles directement sur
-            la page.
+            Recherche une ville, recupere les donnees de la station la plus
+            proche puis filtre toutes les mesures d&apos;un meme jour sur toutes
+            les annees.
           </p>
         </div>
 
-        <form className="search-card" onSubmit={formulaire}>
+        <form className="search-card" onSubmit={formulaireVille}>
           <label className="field">
             <span>Ville</span>
             <input
@@ -92,7 +160,7 @@ function App() {
           </label>
 
           <button type="submit" disabled={chargement === "loading"}>
-            {chargement === "loading" ? "Recherche en cours..." : "Lancer la recherche"}
+            {chargement === "loading" ? "Recherche en cours..." : "Envoyer ville"}
           </button>
 
           {erreur ? <p className="error-message">{erreur}</p> : null}
@@ -104,8 +172,8 @@ function App() {
           <p>La recherche n&apos;a pas encore ete lancee.</p>
           <h2>Le tableau de bord apparaitra ici</h2>
           <p>
-            Tu verras le recap de la ville, la station choisie, les gelees par
-            annee et le detail des temperatures pour une date precise.
+            Le recap ville/station, les gelees par annee et la recherche par
+            jour/mois seront affiches apres l&apos;envoi de la ville.
           </p>
         </section>
       )}
@@ -129,7 +197,7 @@ function App() {
                   {resultat.station_plus_proche.distance_km} km
                 </p>
                 <p>
-                  <strong>Periode dispo :</strong>{" "}
+                  <strong>Periode :</strong>{" "}
                   {resultat.mesures_station.premiere_date} au{" "}
                   {resultat.mesures_station.derniere_date}
                 </p>
@@ -142,32 +210,26 @@ function App() {
               <div className="weather-inline">
                 <div>
                   <span>Min</span>
-                  <strong>
-                    {resultat.mesures_station.mesure_plus_recente?.TN ?? "-"} C
-                  </strong>
+                  <strong>{formatTemperature(resultat.mesures_station.mesure_plus_recente?.TN)}</strong>
                 </div>
                 <div>
                   <span>Max</span>
-                  <strong>
-                    {resultat.mesures_station.mesure_plus_recente?.TX ?? "-"} C
-                  </strong>
+                  <strong>{formatTemperature(resultat.mesures_station.mesure_plus_recente?.TX)}</strong>
                 </div>
                 <div>
                   <span>Moyenne</span>
-                  <strong>
-                    {resultat.mesures_station.mesure_plus_recente?.TM ?? "-"} C
-                  </strong>
+                  <strong>{formatTemperature(resultat.mesures_station.mesure_plus_recente?.TM)}</strong>
                 </div>
               </div>
             </article>
 
             <article className="panel stat-panel">
-              <p className="panel-kicker">Recherche</p>
+              <p className="panel-kicker">Recherche station</p>
               <h3>{resultat.recherche_autres_datasets ? "Elargie" : "Locale"}</h3>
               <p>
                 {resultat.recherche_autres_datasets
-                  ? "La meilleure station a ete cherchee hors departement."
-                  : "Une station du departement est suffisament proche."}
+                  ? "La station retenue a ete trouvee hors departement."
+                  : "Une station du departement a ete utilisee."}
               </p>
             </article>
           </div>
@@ -180,7 +242,7 @@ function App() {
                   <h2>Gel par annee</h2>
                 </div>
                 <p className="panel-note">
-                  Compte des jours ou la temperature minimale est inferieure ou
+                  Nombre de jours ou la temperature minimale est inferieure ou
                   egale a 0 C.
                 </p>
               </div>
@@ -199,88 +261,87 @@ function App() {
             <article className="panel">
               <div className="panel-head">
                 <div>
-                  <p className="panel-kicker">Recherche par date</p>
-                  <h2>Temperature du jour choisi</h2>
+                  <p className="panel-kicker">Jour sans annee</p>
+                  <h2>Toutes les mesures d&apos;un meme jour</h2>
                 </div>
-              </div>
-
-              <label className="field field-date">
-                <span>Date</span>
-                <input
-                  type="date"
-                  min={resultat.mesures_station.premiere_date || undefined}
-                  max={resultat.mesures_station.derniere_date || undefined}
-                  value={dateSelectionnee}
-                  onChange={(e) => setDateSelectionnee(e.target.value)}
-                />
-              </label>
-
-              {mesureChoisie ? (
-                <div className="selected-day">
-                  <h3>{dateSelectionnee}</h3>
-                  <div className="weather-inline">
-                    <div>
-                      <span>Min</span>
-                      <strong>{mesureChoisie.TN ?? "-"} C</strong>
-                    </div>
-                    <div>
-                      <span>Max</span>
-                      <strong>{mesureChoisie.TX ?? "-"} C</strong>
-                    </div>
-                    <div>
-                      <span>Moyenne</span>
-                      <strong>{mesureChoisie.TM ?? "-"} C</strong>
-                    </div>
-                  </div>
-                </div>
-              ) : (
                 <p className="panel-note">
-                  Aucune mesure disponible pour cette date.
+                  Choisis une date, puis l&apos;application prend seulement le jour
+                  et le mois. L&apos;annee est ignoree.
                 </p>
-              )}
-            </article>
-          </div>
-
-          <div className="content-grid">
-            <article className="panel">
-              <div className="panel-head">
-                <div>
-                  <p className="panel-kicker">Stations voisines</p>
-                  <h2>Les plus proches</h2>
-                </div>
               </div>
 
-              <div className="station-list">
-                {stationsProches.map((station) => (
-                  <div className="station-row" key={`${station.fichier}-${station.num_poste}`}>
+              <form className="date-form" onSubmit={formulaireDate}>
+                <div className="date-grid">
+                  <label className="field field-date">
+                    <span>Jour</span>
+                    <select
+                      value={jourSelectionne}
+                      onChange={(e) => setJourSelectionne(e.target.value)}
+                    >
+                      <option value="">Jour</option>
+                      {DAYS.map((day) => (
+                        <option key={day.value} value={day.value}>
+                          {day.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field field-date">
+                    <span>Mois</span>
+                    <select
+                      value={moisSelectionne}
+                      onChange={(e) => setMoisSelectionne(e.target.value)}
+                    >
+                      <option value="">Mois</option>
+                      {MONTHS.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <button type="submit">Envoyer date</button>
+              </form>
+
+              {erreurDate ? <p className="error-message">{erreurDate}</p> : null}
+
+              {jourMoisEnvoye ? (
+                <div className="selected-day">
+                  <div className="selected-day-header">
                     <div>
-                      <strong>{station.nom_station}</strong>
-                      <p>{station.num_poste}</p>
+                      <h3>{rechercheJour.cleJour}</h3>
+                      <p>
+                        Toutes les mesures du jour selectionne, toutes annees
+                        confondues.
+                      </p>
                     </div>
-                    <span>{station.distance_km} km</span>
+                    <div className="day-highlight">
+                      <span>Nombre de gelees</span>
+                      <strong>{rechercheJour.nombreGelees}</strong>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </article>
 
-            <article className="panel">
-              <div className="panel-head">
-                <div>
-                  <p className="panel-kicker">Dernieres mesures</p>
-                  <h2>Historique recent</h2>
+                  {rechercheJour.mesures.length > 0 ? (
+                    <div className="day-results">
+                      {rechercheJour.mesures.map((mesure) => (
+                        <div className="history-row" key={mesure.date}>
+                          <span>{mesure.date}</span>
+                          <strong>TN {formatTemperature(mesure.TN)}</strong>
+                          <strong>TX {formatTemperature(mesure.TX)}</strong>
+                          <strong>TM {formatTemperature(mesure.TM)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="panel-note">
+                      Aucune mesure disponible pour ce jour/mois.
+                    </p>
+                  )}
                 </div>
-              </div>
-
-              <div className="history-list">
-                {resultat.mesures_station.historique_recent.map((mesure) => (
-                  <div className="history-row" key={mesure.date}>
-                    <span>{mesure.date}</span>
-                    <strong>TN {mesure.TN ?? "-"} C</strong>
-                    <strong>TX {mesure.TX ?? "-"} C</strong>
-                    <strong>TM {mesure.TM ?? "-"} C</strong>
-                  </div>
-                ))}
-              </div>
+              ) : null}
             </article>
           </div>
         </section>
