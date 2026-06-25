@@ -1,0 +1,22 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+  color: #2b1d12;
+  background: #f2ede3;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+#root {
+  min-height: 100vh;
+}
